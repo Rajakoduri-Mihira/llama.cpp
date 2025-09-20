@@ -20,7 +20,7 @@ BUILD_DIR="$(pwd)/build/bin"
 
 # Model paths
 GEMMA_3B="$CACHE_DIR/ggml-org_gemma-3-1b-it-GGUF_gemma-3-1b-it-Q4_K_M.gguf"
-GPT_OSS_20B="$CACHE_DIR/ggml-org_gpt-oss-20b-GGUF_gpt-oss-20b-mxfp4.gguf"
+GPT_OSS_20B="$(pwd)/models/ggml-org/gpt-oss-20b-mxfp4.gguf"
 GPT_OSS_120B="$CACHE_DIR/ggml-org_gpt-oss-120b-GGUF_gpt-oss-120b-mxfp4-00001-of-00003.gguf"
 
 # Benchmark parameters

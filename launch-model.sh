@@ -108,6 +108,26 @@ case "$MODE" in
             echo -e "${YELLOW}Enter your prompt (press Enter to submit):${NC}"
             echo ""
             read -p "> " USER_PROMPT
+            echo -e "${CYAN}Loading model (this may take 20+ seconds)...${NC}"
+
+            # Suppress stderr loading messages, keep stdout
+            TEMP_ERR=$(mktemp)
+            trap "rm -f $TEMP_ERR" EXIT
+
+            echo ""
+
+            # Suppress GGML debug output
+            export GGML_DEBUG=0
+            export LLAMA_LOG_LEVEL=error
+
+            # Run and capture all output
+            OUTPUT_FILE=$(mktemp)
+            trap "rm -f $OUTPUT_FILE $TEMP_ERR" EXIT
+
+            # Format prompt for better Q&A response
+            FULL_PROMPT="Question: $USER_PROMPT
+Answer:"
+
             "$BUILD_DIR/llama-cli" \
                 -m "$MODEL_PATH" \
                 -n 512 \
@@ -115,9 +135,34 @@ case "$MODE" in
                 -ngl $NGL \
                 --temp 0.7 \
                 --repeat-penalty 1.1 \
-                --color \
-                --log-disable \
-                -p "$USER_PROMPT"
+                --no-display-prompt \
+                --log-verbosity 0 \
+                -no-cnv \
+                --simple-io \
+                -p "$FULL_PROMPT" > $OUTPUT_FILE 2>&1
+
+            # Extract just the generated text
+            echo -e "${GREEN}Response:${NC}"
+
+            # Extract generated text - find content after all the setup messages
+            # The actual generation appears after the sampler chain info
+            sed -n '/^generate: n_ctx/,/^llama_perf/p' $OUTPUT_FILE | \
+            sed '1d;$d' | \
+            grep -v "^$" | \
+            head -20
+
+            # Show performance stats
+            echo ""
+            echo -e "${CYAN}=== Performance Stats ===${NC}"
+            grep "llama_perf" $OUTPUT_FILE | sed 's/^llama_perf_/  /'
+
+            # Extract clean tokens/sec
+            EVAL_SPEED=$(grep "eval time" $OUTPUT_FILE | tail -1 | sed -n 's/.*(\([0-9.]*\) tokens per second.*/\1/p')
+            if [ -n "$EVAL_SPEED" ]; then
+                echo ""
+                echo -e "${YELLOW}  Generation speed: $EVAL_SPEED tokens/sec${NC}"
+            fi
+            echo ""
         else
             echo -e "${YELLOW}Type your prompt and press Ctrl+D when done${NC}"
             echo ""

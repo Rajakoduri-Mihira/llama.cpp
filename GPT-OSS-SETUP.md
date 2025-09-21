@@ -23,12 +23,21 @@ export HF_TOKEN=your_token_here
 hf download ggml-org/gpt-oss-20b-GGUF gpt-oss-20b-mxfp4.gguf --local-dir ./models/ggml-org --token $HF_TOKEN
 ```
 
-### GPT-OSS-120B (MXFP4)
+### GPT-OSS-120B (Multiple Options)
 
+**Option 1: MXFP4 (Official, but large ~75GB)**
 ```bash
-# Download the 120B model (split into 3 parts)
+# Download the 120B model MXFP4 (split into 3 parts) - may have download issues
 hf download ggml-org/gpt-oss-120b-GGUF --include "gpt-oss-120b-mxfp4-*.gguf" --local-dir ./models/ggml-org --token $HF_TOKEN
 ```
+
+**Option 2: Q4_K_M (Recommended - smaller files)**
+```bash
+# Download Q4_K_M quantization (2 parts, more reliable than MXFP4)
+hf download unsloth/gpt-oss-120b-GGUF --include "Q4_K_M/gpt-oss-120b-Q4_K_M-*.gguf" --local-dir ./models/unsloth --token $HF_TOKEN
+```
+
+**Note**: 120B model downloads are very large and may experience timeouts. Consider using download managers like `aria2c` for more reliable transfers.
 
 ## Model Information
 
@@ -93,8 +102,33 @@ After download, models should be located at:
 - **20B Model**: ~12GB VRAM minimum
 - **120B Model**: ~32GB+ VRAM minimum (may require model sharding for smaller GPUs)
 
+## Troubleshooting
+
+### Large File Downloads
+If you experience timeouts or stuck downloads with the 120B model:
+
+1. **Clean up incomplete downloads**:
+   ```bash
+   find . -name "*120b*incomplete*" -delete
+   ```
+
+2. **Try alternative repositories**:
+   - `unsloth/gpt-oss-120b-GGUF` (Q4_K_M recommended)
+   - `bartowski/openai_gpt-oss-120b-GGUF`
+
+3. **Use download managers**:
+   ```bash
+   # Install aria2c for better download reliability
+   sudo apt install aria2
+   ```
+
+### Current Status
+- ✅ **20B Model**: Fully working, excellent performance on RTX 5090
+- ⚠️  **120B Model**: Download challenges due to large file sizes (~75GB)
+
 ## Notes
 
 - MXFP4 quantization provides excellent performance with minimal quality loss
 - The 120B model may not fit on single consumer GPUs without additional optimization
 - Both models use native MXFP4 precision for MoE layers, enabling efficient inference
+- **Recommendation**: Start with the 20B model for immediate excellent results

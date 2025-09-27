@@ -71,20 +71,14 @@ struct ttnn_buffer_context {
 static std::vector<std::unique_ptr<ttnn_device>> g_devices;
 static bool g_ttnn_initialized = false;
 
-// Initialize stub backend
+// Initialize stub backend - no devices are exposed when the real runtime is missing
 static bool ttnn_init() {
-    if (g_ttnn_initialized) {
-        return true;
-    }
-
-    // Create one stub device
-    auto dev = std::make_unique<ttnn_device>(0);
-    if (dev->initialize()) {
-        g_devices.push_back(std::move(dev));
+    if (!g_ttnn_initialized) {
         g_ttnn_initialized = true;
+        fprintf(stderr, "TTNN: runtime libraries not found, backend disabled\n");
     }
 
-    return g_ttnn_initialized;
+    return false;
 }
 
 // Buffer type interface
@@ -257,7 +251,7 @@ static ggml_backend_dev_t ttnn_reg_get_device(ggml_backend_reg_t reg, size_t ind
 
     static std::vector<ggml_backend_dev_t> devices;
 
-    if (devices.empty()) {
+    if (devices.empty() && ttnn_reg_get_device_count(reg) > 0) {
         size_t count = ttnn_reg_get_device_count(reg);
         devices.reserve(count);
 

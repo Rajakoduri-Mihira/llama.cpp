@@ -5,16 +5,13 @@ set(TT_METAL_SDK_PATH "/workspaces/oxpython/tenstorrent-sdk")
 set(TT_METAL_HOME $ENV{TT_METAL_HOME})
 
 if(NOT TT_METAL_HOME)
-    # Try tenstorrent-sdk source first (preferred)
     if(EXISTS ${TT_METAL_SDK_PATH})
         set(TT_METAL_HOME ${TT_METAL_SDK_PATH})
     else()
-        # Fall back to default paths
         set(TT_METAL_DEFAULT_PATH "/opt/oxpython/external/tt-metal")
         if(EXISTS ${TT_METAL_DEFAULT_PATH})
             set(TT_METAL_HOME ${TT_METAL_DEFAULT_PATH})
         else()
-            # Try components backend path
             set(TT_METAL_RELATIVE_PATH "${CMAKE_SOURCE_DIR}/../../../components/backends/tenstorrent/externals/tt-metal")
             if(EXISTS ${TT_METAL_RELATIVE_PATH})
                 set(TT_METAL_HOME ${TT_METAL_RELATIVE_PATH})
@@ -29,15 +26,24 @@ endif()
 
 message(STATUS "Using TT-Metal from: ${TT_METAL_HOME}")
 
-# Set environment variables needed for TT-Metal
 set(ENV{TT_METAL_HOME} "${TT_METAL_HOME}")
 set(ENV{PYTHONPATH} "${TT_METAL_HOME}:$ENV{PYTHONPATH}")
 
-# Find Python3 (required for TT-Metal)
 find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter Development)
 
 # TT-Metal include directories - prefer OxPython's pre-built includes
 set(OXPYTHON_TT_METAL_PATH "/workspaces/oxpython/components/backends/tenstorrent/externals/tt-metal")
+
+file(GLOB TT_METAL_SPDLOG_DIRS
+    "${OXPYTHON_TT_METAL_PATH}/.cpmcache/spdlog/*/include"
+    "${TT_METAL_HOME}/.cpmcache/spdlog/*/include"
+)
+
+file(GLOB TT_METAL_FMT_DIRS
+    "${OXPYTHON_TT_METAL_PATH}/.cpmcache/fmt/*/include"
+    "${TT_METAL_HOME}/.cpmcache/fmt/*/include"
+)
+
 set(TT_METAL_INCLUDE_DIRS
     # OxPython pre-built includes (preferred)
     "${OXPYTHON_TT_METAL_PATH}/build_Release/include"
@@ -46,6 +52,9 @@ set(TT_METAL_INCLUDE_DIRS
     "${OXPYTHON_TT_METAL_PATH}/ttnn/cpp/ttnn"
     "${OXPYTHON_TT_METAL_PATH}/tt_metal"
     "${OXPYTHON_TT_METAL_PATH}/tt_metal/include"
+    "${OXPYTHON_TT_METAL_PATH}/build_Release/include/metalium-thirdparty"
+    "${OXPYTHON_TT_METAL_PATH}/build_Release/_deps/spdlog-src/include"
+    "${OXPYTHON_TT_METAL_PATH}/build_Release/_deps/fmt-src/include"
     # Fallback to source SDK
     "${TT_METAL_HOME}"
     "${TT_METAL_HOME}/ttnn/cpp"
@@ -55,81 +64,101 @@ set(TT_METAL_INCLUDE_DIRS
     "${TT_METAL_HOME}/tt_metal/impl"
     "${TT_METAL_HOME}/tt_metal/hw/inc"
     "${TT_METAL_HOME}/third_party"
+    "${TT_METAL_HOME}/build_Release/include/metalium-thirdparty"
     # Also check for built includes if available
     "${TT_METAL_HOME}/build_Release/include"
     "${TT_METAL_HOME}/build/include"
+    "${TT_METAL_HOME}/build_Release/_deps/spdlog-src/include"
+    "${TT_METAL_HOME}/build_Release/_deps/fmt-src/include"
+    ${TT_METAL_SPDLOG_DIRS}
+    ${TT_METAL_FMT_DIRS}
 )
 
-# Try to find pre-built libraries
-# First check OxPython's pre-built libraries
 set(OXPYTHON_TT_METAL_PATH "/workspaces/oxpython/components/backends/tenstorrent/externals/tt-metal")
 
-# TTNN library has unconventional name _ttnn.so, so check manually
-set(TTNN_LIB_PATHS
-    "${OXPYTHON_TT_METAL_PATH}/build_Release/lib/_ttnn.so"
+set(TTNN_HEADER_CANDIDATES
+    "${TT_METAL_HOME}"
+    "${TT_METAL_HOME}/ttnn"
+    "${TT_METAL_HOME}/ttnn/api"
+    "${OXPYTHON_TT_METAL_PATH}"
+    "${OXPYTHON_TT_METAL_PATH}/ttnn"
+    "${OXPYTHON_TT_METAL_PATH}/ttnn/api"
+)
+
+find_path(TTNN_PUBLIC_INCLUDE_DIR
+    NAMES ttnn/tensor/tensor.hpp ttnn/api/ttnn/tensor/tensor.hpp
+    PATHS ${TTNN_HEADER_CANDIDATES}
+    NO_DEFAULT_PATH
+)
+
+set(TTNN_RUNTIME_CANDIDATES
+    "${OXPYTHON_TT_METAL_PATH}/build_Release/lib"
+    "${TT_METAL_HOME}/build_Release/lib"
+    "${TT_METAL_HOME}/build/lib"
+)
+
+find_library(TTNN_METAL_LIB
+    NAMES tt_metal
+    PATHS ${TTNN_RUNTIME_CANDIDATES}
+    NO_DEFAULT_PATH
+)
+
+find_library(TTNN_STL_LIB
+    NAMES tt_stl
+    PATHS ${TTNN_RUNTIME_CANDIDATES}
+    NO_DEFAULT_PATH
+)
+
+find_library(TTNN_CORE_LIB
+    NAMES ttnn_core
+    PATHS ${TTNN_RUNTIME_CANDIDATES}
+    NO_DEFAULT_PATH
+)
+
+set(TTNN_CPP_LIB "TTNN_CPP_LIB-NOTFOUND")
+set(TTNN_CPP_CANDIDATES
     "${OXPYTHON_TT_METAL_PATH}/build_Release/lib/_ttnncpp.so"
-    "${TT_METAL_HOME}/build/lib/_ttnn.so"
-    "${TT_METAL_HOME}/build_Release/lib/_ttnn.so"
-    "${TT_METAL_HOME}/ttnn/_ttnn.so"
+    "${TT_METAL_HOME}/build_Release/lib/_ttnncpp.so"
+    "${OXPYTHON_TT_METAL_PATH}/ttnn/_ttnncpp.so"
+    "${TT_METAL_HOME}/ttnn/_ttnncpp.so"
 )
 
-set(TTNN_LIB "TTNN_LIB-NOTFOUND")
-foreach(lib_path ${TTNN_LIB_PATHS})
-    if(EXISTS "${lib_path}")
-        set(TTNN_LIB "${lib_path}")
-        message(STATUS "Found TTNN library: ${lib_path}")
+foreach(cand ${TTNN_CPP_CANDIDATES})
+    if(EXISTS "${cand}")
+        set(TTNN_CPP_LIB "${cand}")
         break()
     endif()
 endforeach()
 
-# Find TT Metal library
-set(TT_METAL_LIB_PATHS
-    "${OXPYTHON_TT_METAL_PATH}/build_Release/lib/libtt_metal.so"
-    "${TT_METAL_HOME}/build/lib/libtt_metal.so"
-    "${TT_METAL_HOME}/build_Release/lib/libtt_metal.so"
-)
-
-set(TT_METAL_LIB "TT_METAL_LIB-NOTFOUND")
-foreach(lib_path ${TT_METAL_LIB_PATHS})
-    if(EXISTS "${lib_path}")
-        set(TT_METAL_LIB "${lib_path}")
-        message(STATUS "Found TT-Metal library: ${lib_path}")
-        break()
-    endif()
-endforeach()
-
-# Create TTNN backend library
-# Always use the full implementation, but conditionally compile based on libraries
 set(GGML_TTNN_SOURCES ggml-ttnn.cpp)
 
-if(NOT (TTNN_LIB AND TT_METAL_LIB))
-    message(STATUS "TTNN libraries not found, using stub implementation mode")
-else()
-    message(STATUS "TTNN libraries found - backend will attempt dynamic loading")
+# Check if we have the required TTNN runtime components
+if(NOT TTNN_PUBLIC_INCLUDE_DIR OR NOT TTNN_METAL_LIB)
+    message(FATAL_ERROR "TTNN runtime prerequisites not found. Please ensure TT_METAL_HOME is set correctly.")
 endif()
 
 ggml_add_backend_library(ggml-ttnn ${GGML_TTNN_SOURCES})
 
-# Configure include directories
 target_include_directories(ggml-ttnn PRIVATE
     ${TT_METAL_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
     ${Python3_INCLUDE_DIRS}
+    ${TTNN_PUBLIC_INCLUDE_DIR}
 )
 
-# Link libraries
-if(TTNN_LIB AND TT_METAL_LIB)
-    message(STATUS "Found pre-built TT-Metal libraries - will load dynamically")
-    # We found the libraries, but due to header complexity, we use dynamic loading
-    # The libraries will be loaded at runtime via dlopen
-else()
-    message(STATUS "TT-Metal libraries not found, will use stub implementation")
+if(TTNN_CORE_LIB)
+    target_link_libraries(ggml-ttnn PRIVATE ${TTNN_CORE_LIB})
 endif()
 
-# Always use stub compilation mode for now due to header dependencies
-# The actual libraries are loaded dynamically at runtime
-target_compile_definitions(ggml-ttnn PRIVATE TTNN_STUB_IMPLEMENTATION)
+if(TTNN_CPP_LIB)
+    target_link_libraries(ggml-ttnn PRIVATE ${TTNN_CPP_LIB})
+endif()
+
+target_link_libraries(ggml-ttnn PRIVATE
+    ${TTNN_METAL_LIB}
+    ${TTNN_STL_LIB}
+)
 
 # Link with standard libraries
 target_link_libraries(ggml-ttnn PRIVATE
